@@ -6,3 +6,4 @@ __pycache__/
 .streamlit/
 chroma_db/
 uploads/
+.vscode/
