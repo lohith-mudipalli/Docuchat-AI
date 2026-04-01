@@ -17,6 +17,9 @@ st.subheader("Upload a PDF and chat with its contents")
 
 st.markdown("Upload a pdf file")
 
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
 # defined a function for the extract the text from the pdf.
 def extract_text_from_pdf(uploaded_file):
     reader = PdfReader(uploaded_file)
@@ -155,12 +158,36 @@ def generate_answer(user_question, retrieved_chunks):
     response = llm.invoke(prompt)
     return response.content
 
+# defined a function for to show the previous chat messages on screen.
+def display_chat_history():
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.write(message["content"])
 
+#defined a function for avoids showing duplicate citations again and again.
+def get_unique_sources(retrieved_chunks):
+    unquie_sources = []
+    seen = set()
+
+    for chunk in retrieved_chunks:
+        label = f"{chunk['source']} - Page {chunk['page']}"
+        if label not in seen:
+            seen.add(label)
+            unquie_sources.append(label)
+    
+    return unquie_sources
+
+api_key = os.getenv("OPENAI_API_KEY")
+
+if not api_key:
+    st.error("OPEN_API_KEY is missing. Please add it to your .env file before using DocuChat AI.")
+    st.stop()
 
 
 uploaded_file = st.file_uploader("Choose a PDF file", type=["pdf"])
 
 collection = None
+chunks = []
 
 
 if uploaded_file is None:
@@ -190,50 +217,59 @@ else:
 
 
 st.markdown("Ask a Question")
+
+display_chat_history()
+
 user_question = st.chat_input("Type your question here.....")
 
 if user_question:
+    st.session_state.message.append({"role": "user", "content": user_question})
+
     with st.chat_message("user"):
         st.write(user_question)
 
     if uploaded_file is None:
-        st.warning("Please upload a PDF before asking a question.")
+        warning_message = "Please upload a PDF brfore asking a question."
+        st.warning(warning_message)
+        st.session_state.messages.append({"role": "assistant", "content": warning_message})
+
     elif collection is None: 
-        st.warning("The document is not ready.")
+        warning_message = "The document is not ready."
+        st.warning(warning_message)
+        st.session_state.messages.append({"role": "assistant", "content": warning_message})
+
     else:
         try:
             with st.spinner("Retrieving relevant chunks..."):
                 retrieved_chunks = retrieve_relevant_chunks(collection, user_question, top_k=3)
-
+            
             if not retrieved_chunks:
-                st.warning("No relevant chunks were found.")
+                no_result_message = "I couldn't find relevant information in the uploaded document."
+                st.warning(no_result_message)
+                st.session_state.messages.append({"role": "assistant", "content": no_result_message})
+
             else:
-               with st.spinner("Generating grounded answer...."):
+                with st.spinner("Generating grounded answer...."):
                     final_answer = generate_answer(user_question, retrieved_chunks)
                     
-                    with st.chat_message("assistant"):
-                        st.markdown(" Answer")
-                        st.write(final_answer)
-
-                        st.markdown("Sources")
-                        seen_sources = set()
-
-                    for chunk in retrieved_chunks:
-                        source_label = f"{chunk['source']} - Page {chunk['page']}"
-                        if source_label not in seen_sources:
-                            st.write(f"- {source_label}")
-                            seen_sources.add(source_label)
-               
-               
-            st.markdown("Top Retrieved Chunks")
-
-            for chunk in retrieved_chunks:
-                with st.expander(
-                    f"Chunk {chunk['chunk_id']} | Page {chunk['page']}"
-                    ):
+                st.session_state.messages.append({"role": "assistant", "content": final_answer})
+                
+                with st.chat_message("assistant"):
+                    st.markdown(" Answer")
+                    st.write(final_answer)
+                    
+                    st.markdown("Sources")
+                    for source in get_unique_sources(retrieved_chunks):
+                        st.write(f"- {source}")
+                        
+                st.markdown("Retrieved Chunks")
+                for chunk in retrieved_chunks:
+                    with st.expander(f"Chunk {chunk['chunk_id']} | Page {chunk['page']}"):
                         st.write(chunk["content"])
         
         except Exception as error:
-            st.error(f"Error while retrieving relevant chunks: {error}")
+            error_message = f"Error while answering the question: {error}"
+            st.error(error_message)
+            st.session_state.messgaes.append({"role": "assistant", "content": error_message})
 
             
