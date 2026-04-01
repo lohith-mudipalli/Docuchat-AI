@@ -99,7 +99,34 @@ def build_vector_store(chunks):
 
     return collection, len(documents)
 
+# defined a function for the semantic retrieval.
+def retrieve_relevant_chunks(collection, user_question, top_k=3):
+    results = collection.query(
+        query_texts = [user_question],
+        n_results = top_k,
+    )
+
+    retrieved_chunks = []
+
+    documents = results.get("documents", [[]])[0]
+    metadatas = results.get("metadatas", [[]])[0]
+
+    for document, metadata in zip(documents, metadatas):
+        retrieved_chunks.append(
+            {
+                "content": document,
+                "page": metadata["page"],
+                "source": metadata["source"],
+                "chunk_id": metadata["chunk_id"],
+            }
+        )
+    return retrieved_chunks
+
+
 uploaded_file = st.file_uploader("Choose a PDF file", type=["pdf"])
+
+collection = None
+chunks = []
 
 if uploaded_file is None:
     st.info("Please upload a PDF to begin")
@@ -122,13 +149,6 @@ else:
 
             st.success("Embeddings created and stored successfully.")
             st.write(f"Total vector stored: {total_stored}")
-
-            st.write("Chunks preview")
-
-            for chunk in chunks[:5]:
-                with st.expander(f"Chunk {chunk['chunk_id']} | page {chunk['page']}"): 
-                    st.write(chunk["content"])
-
     
     except Exception as error:
         st.error(f"Error while reading PDF: {error}")
@@ -143,5 +163,24 @@ if user_question:
 
     if uploaded_file is None:
         st.warning("Please upload a PDF before asking a question.")
-    else: 
-        st.info("Docuchat AI will answer for question. Just now added embeddings and retrieval., semantic retrieval will added in next steps.")
+    elif collection is None: 
+        st.warning("The document is not ready for retrieval yet.")
+    else:
+        try:
+            retrieved_chunks = retrieve_relevant_chunks(collection, user_question, top_k=3)
+
+            if not retrieved_chunks:
+                st.warning("No relevant chunks were found.")
+            else:
+                st.markdown("Top Retrieved Chunks")
+
+            for chunk in retrieved_chunks:
+                with st.expander(
+                    f"Chunk {chunk['chunk_id']} | Page {chunk['page']}"
+                    ):
+                        st.write(chunk["content"])
+        
+        except Exception as error:
+            st.error(f"Error while retrieving relevant chunks: {error}")
+
+            
