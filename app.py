@@ -4,7 +4,7 @@ import streamlit as st
 from dotenv import load_dotenv
 from pypdf import PdfReader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_openai import OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 import chromadb
 
 
@@ -122,11 +122,46 @@ def retrieve_relevant_chunks(collection, user_question, top_k=3):
         )
     return retrieved_chunks
 
+# defined a function for final answer generation with citations.
+def generate_answer(user_question, retrieved_chunks):
+    llm = ChatOpenAI(model="gpt-4.1-mini", temperature=0)
+
+    context_text = "\n\n".join(
+        [
+            f"Source: {chunk['source']}, Page: {chunk['page']}\n{chunk['content']}"
+            for chunk in retrieved_chunks
+        ]
+    )
+
+    prompt = f"""
+    You are an AI document assistant.
+
+    Rules:
+    1. Answer ONLY using the provided context.
+    2. Do NOT use outside knowledge.
+    3. If the answer is not in the context, say exactly:
+        "I couldn't find that in the uploaded document."
+    4. Keep the answer clear and concise.
+    5. End with citations using source name and page number.
+
+
+    User Question: 
+    {user_question}
+
+    Context:
+    {context_text}
+    """
+
+    response = llm.invoke(prompt)
+    return response.content
+
+
+
 
 uploaded_file = st.file_uploader("Choose a PDF file", type=["pdf"])
 
 collection = None
-chunks = []
+
 
 if uploaded_file is None:
     st.info("Please upload a PDF to begin")
@@ -158,21 +193,39 @@ st.markdown("Ask a Question")
 user_question = st.chat_input("Type your question here.....")
 
 if user_question:
-    st.markdown("Your question")
-    st.write(user_question)
+    with st.chat_message("user"):
+        st.write(user_question)
 
     if uploaded_file is None:
         st.warning("Please upload a PDF before asking a question.")
     elif collection is None: 
-        st.warning("The document is not ready for retrieval yet.")
+        st.warning("The document is not ready.")
     else:
         try:
-            retrieved_chunks = retrieve_relevant_chunks(collection, user_question, top_k=3)
+            with st.spinner("Retrieving relevant chunks..."):
+                retrieved_chunks = retrieve_relevant_chunks(collection, user_question, top_k=3)
 
             if not retrieved_chunks:
                 st.warning("No relevant chunks were found.")
             else:
-                st.markdown("Top Retrieved Chunks")
+               with st.spinner("Generating grounded answer...."):
+                    final_answer = generate_answer(user_question, retrieved_chunks)
+                    
+                    with st.chat_message("assistant"):
+                        st.markdown(" Answer")
+                        st.write(final_answer)
+
+                        st.markdown("Sources")
+                        seen_sources = set()
+
+                    for chunk in retrieved_chunks:
+                        source_label = f"{chunk['source']} - Page {chunk['page']}"
+                        if source_label not in seen_sources:
+                            st.write(f"- {source_label}")
+                            seen_sources.add(source_label)
+               
+               
+            st.markdown("Top Retrieved Chunks")
 
             for chunk in retrieved_chunks:
                 with st.expander(
