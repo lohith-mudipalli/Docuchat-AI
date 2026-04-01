@@ -29,6 +29,7 @@ huggingface_hub==1.8.0
 idna==3.11
 importlib_metadata==8.7.1
 importlib_resources==6.5.2
+iniconfig==2.3.0
 Jinja2==3.1.6
 jiter==0.13.0
 jsonpatch==1.33
@@ -67,6 +68,7 @@ overrides==7.7.0
 packaging==26.0
 pandas==3.0.2
 pillow==12.1.1
+pluggy==1.6.0
 protobuf==6.33.6
 pyarrow==23.0.1
 pybase64==1.4.3
@@ -78,6 +80,7 @@ Pygments==2.20.0
 pypdf==6.9.2
 PyPika==0.51.1
 pyproject_hooks==1.2.0
+pytest==9.0.2
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.2
 PyYAML==6.0.3

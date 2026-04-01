@@ -7,6 +7,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 import chromadb
 
+from src.rag_utils import chunk_pages, retrieve_relevant_chunks, get_unique_sources
 
 load_dotenv()
 
@@ -39,34 +40,6 @@ def extract_text_from_pdf(uploaded_file):
         
     return pages_data
 
-# defined a function for chunking - breaking a large text into smaller pieces.
-def chunk_pages(pages_data):
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size = 1000,
-        chunk_overlap = 200,
-        separators = ["\n\n", "\n", " ", ""],
-    )
-
-    chunks = []
-    chunk_id = 1
-
-    for page_data in pages_data:
-        split_texts = text_splitter.split_text(page_data["text"])
-
-        for split_text in split_texts:
-            cleaned_text = split_text.strip()
-
-            if cleaned_text:
-                chunks.append(
-                    {
-                        "chunk_id": chunk_id,
-                        "page": page_data["page"],
-                        "source": page_data["source"],
-                        "content": split_text.strip(),
-                    }
-                )
-                chunk_id += 1
-    return chunks
 
 # defined a function for embeddings. 
 def build_vector_store(chunks):
@@ -102,28 +75,6 @@ def build_vector_store(chunks):
 
     return collection, len(documents)
 
-# defined a function for the semantic retrieval.
-def retrieve_relevant_chunks(collection, user_question, top_k=3):
-    results = collection.query(
-        query_texts = [user_question],
-        n_results = top_k,
-    )
-
-    retrieved_chunks = []
-
-    documents = results.get("documents", [[]])[0]
-    metadatas = results.get("metadatas", [[]])[0]
-
-    for document, metadata in zip(documents, metadatas):
-        retrieved_chunks.append(
-            {
-                "content": document,
-                "page": metadata["page"],
-                "source": metadata["source"],
-                "chunk_id": metadata["chunk_id"],
-            }
-        )
-    return retrieved_chunks
 
 # defined a function for final answer generation with citations.
 def generate_answer(user_question, retrieved_chunks):
@@ -164,18 +115,6 @@ def display_chat_history():
         with st.chat_message(message["role"]):
             st.write(message["content"])
 
-#defined a function for avoids showing duplicate citations again and again.
-def get_unique_sources(retrieved_chunks):
-    unquie_sources = []
-    seen = set()
-
-    for chunk in retrieved_chunks:
-        label = f"{chunk['source']} - Page {chunk['page']}"
-        if label not in seen:
-            seen.add(label)
-            unquie_sources.append(label)
-    
-    return unquie_sources
 
 api_key = os.getenv("OPENAI_API_KEY")
 
