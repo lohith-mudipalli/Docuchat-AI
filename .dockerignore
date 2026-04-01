@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.pyc
+.env
+.git
+.gitignore
+.streamlit/secrets.toml
+chroma_db/
+uploads/
+.DS_Store
