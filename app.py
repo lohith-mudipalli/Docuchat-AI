@@ -1,5 +1,4 @@
 import os
-import shutil
 import streamlit as st
 from dotenv import load_dotenv
 from pypdf import PdfReader
@@ -20,6 +19,18 @@ st.markdown("Upload a pdf file")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
+
+if "collection" not in st.session_state:
+    st.session_state.collection = None
+
+if "chunks" not in st.session_state:
+    st.session_state.chunks = []
+
+if "current_file_name" not in st.session_state:
+    st.session_state.current_file_name = None
+
+if "vector_store_ready" not in st.session_state:
+    st.session_state.vector_store_ready = False
 
 # defined a function for the extract the text from the pdf.
 def extract_text_from_pdf(uploaded_file):
@@ -43,15 +54,10 @@ def extract_text_from_pdf(uploaded_file):
 
 # defined a function for embeddings. 
 def build_vector_store(chunks):
-    db_path = "chroma_db"
+    chroma_client = chromadb.Client()
+    collection = chroma_client.get_or_create_collection(name="docuchat_ai")
 
-    if os.path.exists(db_path):
-        shutil.rmtree(db_path)
-
-    chroma_client = chromadb.PersistentClient(path=db_path)
-    collection = chroma_client.get_or_create_collection(name="dochuchat_ai")
-
-    embedding_model = OpenAIEmbeddings()
+    embedding_model = OpenAIEmbeddings(model="text-embedding-3-small")
 
     documents = [chunk["content"] for chunk in chunks]
     ids = [f"chunk-{chunk['chunk_id']}" for chunk in chunks]
@@ -78,7 +84,7 @@ def build_vector_store(chunks):
 
 # defined a function for final answer generation with citations.
 def generate_answer(user_question, retrieved_chunks):
-    llm = ChatOpenAI(model="gpt-4.1-mini", temperature=0)
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
     context_text = "\n\n".join(
         [
@@ -116,43 +122,61 @@ def display_chat_history():
             st.write(message["content"])
 
 
-api_key = os.getenv("OPENAI_API_KEY")
+api_key = os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY")
 
 if not api_key:
-    st.error("OPEN_API_KEY is missing. Please add it to your .env file before using DocuChat AI.")
+    st.error("OPENAI_API_KEY is missing. Please add it to your .env file before using DocuChat AI.")
     st.stop()
 
 
 uploaded_file = st.file_uploader("Choose a PDF file", type=["pdf"])
 
-collection = None
-chunks = []
-
-
 if uploaded_file is None:
     st.info("Please upload a PDF to begin")
+    st.session_state.collection = None
+    st.session_state.chunks = []
+    st.session_state.current_file_name = None
+    st.session_state.vector_store_ready = False
+
+
 else: 
     st.success(f"Uploaded file: {uploaded_file.name}")
-    # Error Handling if pdf file, has any issues.
-    try:
-        pages_data = extract_text_from_pdf(uploaded_file)
-
-        if not pages_data:
-            st.warning("No readable text was found in this PDF.")
-        else:
-            chunks = chunk_pages(pages_data)
-            st.markdown("Extracted PDF Context")    
-            st.write(f"Total readable pages: {len(pages_data)}")
-            st.write(f"Total chunks created: {len(chunks)}")
-
-            with st.spinner("Creating embeddings and storing them in ChromaDB...."):
-                collection, total_stored = build_vector_store(chunks)
-
-            st.success("Embeddings created and stored successfully.")
-            st.write(f"Total vector stored: {total_stored}")
     
-    except Exception as error:
-        st.error(f"Error while reading PDF: {error}")
+    # Rebuild vector store only if this is a new file
+    if st.session_state.current_file_name != uploaded_file.name:
+        try:
+            pages_data = extract_text_from_pdf(uploaded_file)
+
+            if not pages_data:
+                st.warning("No readable text was found in this PDF.")
+                st.session_state.collection = None
+                st.session_state.chunks = []
+                st.session_state.current_file_name = uploaded_file.name
+                st.session_state.vector_store_ready = False
+            else:
+                chunks = chunk_pages(pages_data)
+                st.markdown("Extracted PDF Context")    
+                st.write(f"Total readable pages: {len(pages_data)}")
+                st.write(f"Total chunks created: {len(chunks)}")
+
+                with st.spinner("Creating embeddings and storing them in ChromaDB...."):
+                        collection, total_stored = build_vector_store(chunks)
+                st.session_state.collection = collection
+                st.session_state.chunks = chunks
+                st.session_state.current_file_name = uploaded_file.name
+                st.session_state.vector_store_ready = True
+
+                st.success("Embeddings created and stored successfully.")
+                st.write(f"Total vector stored: {total_stored}")
+    
+        except Exception as error:
+            st.session_state.collection = None
+            st.session_state.chunks = []
+            st.session_state.vector_store_ready = False
+            st.error(f"Error while reading PDF: {error}")
+    
+    else:
+        st.info("Document is already processed and ready for questions.")
 
 
 st.markdown("Ask a Question")
@@ -162,7 +186,7 @@ display_chat_history()
 user_question = st.chat_input("Type your question here.....")
 
 if user_question:
-    st.session_state.message.append({"role": "user", "content": user_question})
+    st.session_state.messages.append({"role": "user", "content": user_question})
 
     with st.chat_message("user"):
         st.write(user_question)
@@ -172,7 +196,7 @@ if user_question:
         st.warning(warning_message)
         st.session_state.messages.append({"role": "assistant", "content": warning_message})
 
-    elif collection is None: 
+    elif not st.session_state.vector_store_ready or st.session_state.collection is None: 
         warning_message = "The document is not ready."
         st.warning(warning_message)
         st.session_state.messages.append({"role": "assistant", "content": warning_message})
@@ -180,7 +204,7 @@ if user_question:
     else:
         try:
             with st.spinner("Retrieving relevant chunks..."):
-                retrieved_chunks = retrieve_relevant_chunks(collection, user_question, top_k=3)
+                retrieved_chunks = retrieve_relevant_chunks(st.session_state.collection, user_question, top_k=3)
             
             if not retrieved_chunks:
                 no_result_message = "I couldn't find relevant information in the uploaded document."
@@ -209,6 +233,6 @@ if user_question:
         except Exception as error:
             error_message = f"Error while answering the question: {error}"
             st.error(error_message)
-            st.session_state.messgaes.append({"role": "assistant", "content": error_message})
+            st.session_state.messages.append({"role": "assistant", "content": error_message})
 
             

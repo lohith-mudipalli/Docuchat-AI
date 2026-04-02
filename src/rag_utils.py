@@ -1,4 +1,5 @@
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_openai import OpenAIEmbeddings
 
 # defined a function for chunking - breaking a large text into smaller pieces.
 def chunk_pages(pages_data):
@@ -32,8 +33,11 @@ def chunk_pages(pages_data):
 
 # defined a function for the semantic retrieval.
 def retrieve_relevant_chunks(collection, user_question, top_k=3):
+    embedding_model = OpenAIEmbeddings(model="text-embedding-3-small")
+    query_embedding = embedding_model.embed_query(user_question)
+
     results = collection.query(
-        query_texts=[user_question],
+        query_embeddings=[query_embedding],
         n_results=top_k,
     )
 
