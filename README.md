@@ -1,36 +1,44 @@
 # How It Works
-User uploads a PDF
-        ↓
-Text is extracted page by page
-        ↓
-Text is split into chunks
-        ↓
-Embeddings are generated for each chunk
-        ↓
-Chunks + metadata are stored in ChromaDB
-        ↓
-User asks a question
-        ↓
-Relevant chunks are retrieved semantically
-        ↓
-OpenAI generates an answer using only retrieved context
-        ↓
-The app returns the answer with citations
+```mermaid
+flowchart TB
+    U["User Uploads PDF"] --> E["Text Extraction<br/>pypdf (page by page)"]
+
+    E --> C["Chunking<br/>RecursiveCharacterTextSplitter"]
+
+    C --> EM["Generate Embeddings<br/>OpenAI Embeddings"]
+
+    EM --> DB["ChromaDB<br/>Vector Store<br/>Chunks + Metadata"]
+
+    DB --> Q["User Asks Question"]
+
+    Q --> R["Semantic Retrieval<br/>Top Relevant Chunks"]
+
+    R --> LLM["LLM (OpenAI)<br/>Generate Answer<br/>Using Retrieved Context Only"]
+
+    LLM --> OUT["Answer + Citations<br/>(Source + Page)"]
+```
 
 ## Project Structure
-Docuchat-AI/
-├── src/
-│   └── rag_utils.py
-├── tests/
-│   └── test_rag_utils.py
-├── .dockerignore
-├── .env.example
-├── .gitignore
-├── Dockerfile
-├── app.py
-├── requirements.txt
-└── README.md
+```mermaid
+flowchart TB
+    ROOT["DocuChat-AI"]
 
+    ROOT --> SRC["src/"]
+    SRC --> RAG["rag_utils.py"]
+
+    ROOT --> TESTS["tests/"]
+    TESTS --> T1["test_rag_utils.py"]
+
+    ROOT --> APP["app.py"]
+    ROOT --> REQ["requirements.txt"]
+
+    ROOT --> DOCKER["Dockerfile"]
+    ROOT --> ENV[".env.example"]
+
+    ROOT --> IGNORE[".gitignore / .dockerignore"]
+
+    ROOT --> README["README.md"]
+```
 ### Example Questions
 After uploading a PDF, users can ask questions like:
 - What is this document about?
